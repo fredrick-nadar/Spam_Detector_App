@@ -34,9 +34,9 @@ interface AppState {
 }
 
 const DEFAULT_CONFIG: AppConfig = {
-  geminiApiKey: '',
-  telegramBotToken: '',
-  telegramChatId: '',
+  geminiApiKey: 'AIzaSyA9nvMSSpKsdZGjO36y1g-K-cWpeBqtZa4',
+  telegramBotToken: '8052643706:AAFz8o4AsnxMfB3LYhw7ehPszOf2pPqhvp0',
+  telegramChatId: '6185770061',
   notificationsEnabled: true,
   monitoringEnabled: false,
   batchSize: 10,

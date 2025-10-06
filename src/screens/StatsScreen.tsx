@@ -21,14 +21,20 @@ export default function StatsScreen() {
     }
   };
 
-  const spamRate =
-    stats.totalMessages > 0 ? stats.spamCount / stats.totalMessages : 0;
-  const hamRate =
-    stats.totalMessages > 0 ? stats.hamCount / stats.totalMessages : 0;
-  const unclassifiedRate =
-    stats.totalMessages > 0
-      ? stats.unclassifiedCount / stats.totalMessages
-      : 0;
+  // Safe calculations with fallbacks to prevent NaN
+  const safeTotal = stats.totalMessages || 0;
+  const safeSpam = stats.spamCount || 0;
+  const safeHam = stats.hamCount || 0;
+  const safeUnclassified = stats.unclassifiedCount || 0;
+
+  const spamRate = safeTotal > 0 ? safeSpam / safeTotal : 0;
+  const hamRate = safeTotal > 0 ? safeHam / safeTotal : 0;
+  const unclassifiedRate = safeTotal > 0 ? safeUnclassified / safeTotal : 0;
+
+  // Ensure rates are valid numbers
+  const validSpamRate = isNaN(spamRate) ? 0 : spamRate;
+  const validHamRate = isNaN(hamRate) ? 0 : hamRate;
+  const validUnclassifiedRate = isNaN(unclassifiedRate) ? 0 : unclassifiedRate;
 
   return (
     <ScrollView style={styles.container}>
@@ -39,7 +45,7 @@ export default function StatsScreen() {
           <View style={styles.overviewRow}>
             <View style={styles.overviewItem}>
               <Text style={styles.overviewLabel}>Total Messages</Text>
-              <Text style={styles.overviewValue}>{stats.totalMessages}</Text>
+              <Text style={styles.overviewValue}>{safeTotal}</Text>
             </View>
           </View>
         </Card.Content>
@@ -52,26 +58,26 @@ export default function StatsScreen() {
           <DataTable>
             <DataTable.Row>
               <DataTable.Cell>Spam</DataTable.Cell>
-              <DataTable.Cell numeric>{stats.spamCount}</DataTable.Cell>
+              <DataTable.Cell numeric>{safeSpam}</DataTable.Cell>
               <DataTable.Cell numeric>
-                <Text style={styles.spamText}>{formatPercentage(spamRate)}</Text>
+                <Text style={styles.spamText}>{formatPercentage(validSpamRate)}</Text>
               </DataTable.Cell>
             </DataTable.Row>
 
             <DataTable.Row>
               <DataTable.Cell>Ham (Not Spam)</DataTable.Cell>
-              <DataTable.Cell numeric>{stats.hamCount}</DataTable.Cell>
+              <DataTable.Cell numeric>{safeHam}</DataTable.Cell>
               <DataTable.Cell numeric>
-                <Text style={styles.hamText}>{formatPercentage(hamRate)}</Text>
+                <Text style={styles.hamText}>{formatPercentage(validHamRate)}</Text>
               </DataTable.Cell>
             </DataTable.Row>
 
             <DataTable.Row>
               <DataTable.Cell>Unclassified</DataTable.Cell>
-              <DataTable.Cell numeric>{stats.unclassifiedCount}</DataTable.Cell>
+              <DataTable.Cell numeric>{safeUnclassified}</DataTable.Cell>
               <DataTable.Cell numeric>
                 <Text style={styles.unknownText}>
-                  {formatPercentage(unclassifiedRate)}
+                  {formatPercentage(validUnclassifiedRate)}
                 </Text>
               </DataTable.Cell>
             </DataTable.Row>
@@ -89,23 +95,23 @@ export default function StatsScreen() {
                 style={[
                   styles.rateBarFill,
                   styles.spamFill,
-                  { width: `${spamRate * 100}%` },
+                  { width: `${Math.min(validSpamRate * 100, 100)}%` },
                 ]}
               />
             </View>
             <Text style={styles.rateText}>
-              {formatPercentage(spamRate, 2)} of messages are spam
+              {formatPercentage(validSpamRate, 2)} of messages are spam
             </Text>
           </View>
 
-          {stats.spamCount > 0 && (
+          {safeSpam > 0 && (
             <Paragraph style={styles.insightText}>
               💡 Your inbox receives spam messages regularly. The detector is
               actively protecting you!
             </Paragraph>
           )}
 
-          {stats.spamCount === 0 && stats.totalMessages > 0 && (
+          {safeSpam === 0 && safeTotal > 0 && (
             <Paragraph style={styles.insightText}>
               ✅ Great! No spam detected in your messages so far.
             </Paragraph>
@@ -120,29 +126,28 @@ export default function StatsScreen() {
           <View style={styles.infoRow}>
             <Text style={styles.infoLabel}>Last Updated:</Text>
             <Text style={styles.infoValue}>
-              {formatTimestamp(stats.lastUpdated)}
+              {formatTimestamp(stats.lastUpdated || Date.now())}
             </Text>
           </View>
 
-          {stats.totalMessages > 0 && (
+          {safeTotal > 0 && (
             <>
               <View style={styles.infoRow}>
                 <Text style={styles.infoLabel}>Classification Status:</Text>
                 <Text style={styles.infoValue}>
-                  {stats.unclassifiedCount === 0
+                  {safeUnclassified === 0
                     ? 'All messages classified'
-                    : `${stats.unclassifiedCount} pending`}
+                    : `${safeUnclassified} pending`}
                 </Text>
               </View>
 
               <View style={styles.infoRow}>
                 <Text style={styles.infoLabel}>Detection Accuracy:</Text>
                 <Text style={styles.infoValue}>
-                  {stats.unclassifiedCount === 0
+                  {safeUnclassified === 0
                     ? '100% classified'
                     : formatPercentage(
-                        (stats.totalMessages - stats.unclassifiedCount) /
-                          stats.totalMessages
+                        (safeTotal - safeUnclassified) / safeTotal
                       )}
                 </Text>
               </View>

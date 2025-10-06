@@ -5,15 +5,50 @@ const DB_NAME = 'sms_spam_detector.db';
 
 class DatabaseService {
   private db: SQLite.SQLiteDatabase | null = null;
+  private initializing: Promise<void> | null = null;
 
   async initialize(): Promise<void> {
-    try {
-      this.db = await SQLite.openDatabaseAsync(DB_NAME);
-      await this.createTables();
-      console.log('Database initialized successfully');
-    } catch (error) {
-      console.error('Failed to initialize database:', error);
-      throw error;
+    // Prevent multiple initializations
+    if (this.initializing) {
+      return this.initializing;
+    }
+
+    if (this.db) {
+      console.log('Database already initialized');
+      return;
+    }
+
+    this.initializing = (async () => {
+      try {
+        console.log('Initializing database...');
+        this.db = await SQLite.openDatabaseAsync(DB_NAME);
+        await this.createTables();
+        console.log('Database initialized successfully');
+      } catch (error) {
+        console.error('Failed to initialize database:', error);
+        this.db = null;
+        throw error;
+      } finally {
+        this.initializing = null;
+      }
+    })();
+
+    return this.initializing;
+  }
+
+  isInitialized(): boolean {
+    return this.db !== null;
+  }
+
+  private async ensureInitialized(): Promise<void> {
+    if (!this.db && !this.initializing) {
+      await this.initialize();
+    } else if (this.initializing) {
+      await this.initializing;
+    }
+
+    if (!this.db) {
+      throw new Error('Database failed to initialize');
     }
   }
 
@@ -64,7 +99,7 @@ class DatabaseService {
   }
 
   async insertMessage(message: SMSMessage): Promise<void> {
-    if (!this.db) throw new Error('Database not initialized');
+    await this.ensureInitialized();
 
     const query = `
       INSERT OR REPLACE INTO sms_messages (
@@ -72,7 +107,7 @@ class DatabaseService {
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
-    await this.db.runAsync(
+    await this.db!.runAsync(
       query,
       message.id,
       message.sender,
@@ -91,7 +126,7 @@ class DatabaseService {
     confidence: number,
     reason: string
   ): Promise<void> {
-    if (!this.db) throw new Error('Database not initialized');
+    await this.ensureInitialized();
 
     const query = `
       UPDATE sms_messages 
@@ -99,7 +134,7 @@ class DatabaseService {
       WHERE id = ?
     `;
 
-    await this.db.runAsync(
+    await this.db!.runAsync(
       query,
       isSpam ? 1 : 0,
       confidence,
@@ -110,10 +145,10 @@ class DatabaseService {
   }
 
   async getMessage(messageId: string): Promise<SMSMessage | null> {
-    if (!this.db) throw new Error('Database not initialized');
+    await this.ensureInitialized();
 
     const query = 'SELECT * FROM sms_messages WHERE id = ? LIMIT 1';
-    const result = await this.db.getFirstAsync<any>(query, messageId);
+    const result = await this.db!.getFirstAsync<any>(query, messageId);
 
     if (!result) return null;
 
@@ -121,7 +156,7 @@ class DatabaseService {
   }
 
   async getAllMessages(limit: number = 50, offset: number = 0): Promise<SMSMessage[]> {
-    if (!this.db) throw new Error('Database not initialized');
+    await this.ensureInitialized();
 
     const query = `
       SELECT * FROM sms_messages 
@@ -129,12 +164,12 @@ class DatabaseService {
       LIMIT ? OFFSET ?
     `;
 
-    const results = await this.db.getAllAsync<any>(query, limit, offset);
+    const results = await this.db!.getAllAsync<any>(query, limit, offset);
     return results.map((row) => this.mapRowToMessage(row));
   }
 
   async getUnclassifiedMessages(limit: number = 10): Promise<SMSMessage[]> {
-    if (!this.db) throw new Error('Database not initialized');
+    await this.ensureInitialized();
 
     const query = `
       SELECT * FROM sms_messages 
@@ -143,12 +178,12 @@ class DatabaseService {
       LIMIT ?
     `;
 
-    const results = await this.db.getAllAsync<any>(query, limit);
+    const results = await this.db!.getAllAsync<any>(query, limit);
     return results.map((row) => this.mapRowToMessage(row));
   }
 
   async getMessagesSince(timestamp: number): Promise<SMSMessage[]> {
-    if (!this.db) throw new Error('Database not initialized');
+    await this.ensureInitialized();
 
     const query = `
       SELECT * FROM sms_messages 
@@ -156,12 +191,12 @@ class DatabaseService {
       ORDER BY timestamp DESC
     `;
 
-    const results = await this.db.getAllAsync<any>(query, timestamp);
+    const results = await this.db!.getAllAsync<any>(query, timestamp);
     return results.map((row) => this.mapRowToMessage(row));
   }
 
   async getStats(): Promise<MessageStats> {
-    if (!this.db) throw new Error('Database not initialized');
+    await this.ensureInitialized();
 
     const query = `
       SELECT 
@@ -172,7 +207,7 @@ class DatabaseService {
       FROM sms_messages
     `;
 
-    const result = await this.db.getFirstAsync<any>(query);
+    const result = await this.db!.getFirstAsync<any>(query);
 
     return {
       totalMessages: result?.total || 0,
@@ -184,15 +219,15 @@ class DatabaseService {
   }
 
   async deleteMessage(messageId: string): Promise<void> {
-    if (!this.db) throw new Error('Database not initialized');
+    await this.ensureInitialized();
 
-    await this.db.runAsync('DELETE FROM sms_messages WHERE id = ?', messageId);
+    await this.db!.runAsync('DELETE FROM sms_messages WHERE id = ?', messageId);
   }
 
   async clearAllMessages(): Promise<void> {
-    if (!this.db) throw new Error('Database not initialized');
+    await this.ensureInitialized();
 
-    await this.db.runAsync('DELETE FROM sms_messages');
+    await this.db!.runAsync('DELETE FROM sms_messages');
   }
 
   // Notification queue operations
@@ -202,7 +237,7 @@ class DatabaseService {
     body: string,
     timestamp: number
   ): Promise<string> {
-    if (!this.db) throw new Error('Database not initialized');
+    await this.ensureInitialized();
 
     const id = `nq_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
@@ -211,12 +246,12 @@ class DatabaseService {
       VALUES (?, ?, ?, ?, ?)
     `;
 
-    await this.db.runAsync(query, id, messageId, sender, body, timestamp);
+    await this.db!.runAsync(query, id, messageId, sender, body, timestamp);
     return id;
   }
 
   async getNotificationQueue(): Promise<any[]> {
-    if (!this.db) throw new Error('Database not initialized');
+    await this.ensureInitialized();
 
     const query = `
       SELECT * FROM notification_queue 
@@ -225,11 +260,11 @@ class DatabaseService {
       LIMIT 10
     `;
 
-    return await this.db.getAllAsync(query);
+    return await this.db!.getAllAsync(query);
   }
 
   async updateNotificationAttempt(queueId: string): Promise<void> {
-    if (!this.db) throw new Error('Database not initialized');
+    await this.ensureInitialized();
 
     const query = `
       UPDATE notification_queue 
@@ -237,13 +272,13 @@ class DatabaseService {
       WHERE id = ?
     `;
 
-    await this.db.runAsync(query, Date.now(), queueId);
+    await this.db!.runAsync(query, Date.now(), queueId);
   }
 
   async removeFromNotificationQueue(queueId: string): Promise<void> {
-    if (!this.db) throw new Error('Database not initialized');
+    await this.ensureInitialized();
 
-    await this.db.runAsync('DELETE FROM notification_queue WHERE id = ?', queueId);
+    await this.db!.runAsync('DELETE FROM notification_queue WHERE id = ?', queueId);
   }
 
   private mapRowToMessage(row: any): SMSMessage {

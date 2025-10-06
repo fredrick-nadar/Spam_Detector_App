@@ -180,7 +180,7 @@ export default function HomeScreen({ navigation }: Props) {
 
     Alert.alert(
       'Scan Inbox',
-      'This will load and classify recent messages from your inbox. This may take a while.',
+      'This will load and classify the 15 most recent messages from your inbox. This may take a while.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -188,7 +188,7 @@ export default function HomeScreen({ navigation }: Props) {
           onPress: async () => {
             try {
               setLoadingMessages(true);
-              const count = await smsMonitoringService.loadAndClassifyInbox(50);
+              const count = await smsMonitoringService.loadAndClassifyInbox(15);
               await loadMessages();
               await loadStats();
               Alert.alert('Success', `Processed ${count} messages from inbox.`);
