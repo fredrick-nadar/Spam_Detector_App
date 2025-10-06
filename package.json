@@ -1,0 +1,45 @@
+{
+  "name": "nlp",
+  "version": "1.0.0",
+  "main": "index.ts",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
+    "web": "expo start --web",
+    "prebuild": "expo prebuild --platform android",
+    "prebuild:clean": "expo prebuild --clean",
+    "build": "cd android && ./gradlew assembleRelease",
+    "clean": "cd android && ./gradlew clean",
+    "logs": "adb logcat | grep -E 'SmsReceiver|SmsModule|ReactNative'",
+    "test:sms": "adb emu sms send +1234567890",
+    "test:spam": "adb emu sms send +9999999999 'URGENT! You won $1000000! Click here NOW!'"
+  },
+  "dependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "@react-native-async-storage/async-storage": "^2.2.0",
+    "@react-navigation/native": "^7.1.18",
+    "@react-navigation/native-stack": "^7.3.27",
+    "axios": "^1.12.2",
+    "date-fns": "^4.1.0",
+    "expo": "~54.0.12",
+    "expo-build-properties": "~1.0.9",
+    "expo-secure-store": "^15.0.7",
+    "expo-sqlite": "^16.0.8",
+    "expo-status-bar": "~3.0.8",
+    "react": "19.1.0",
+    "react-native": "0.81.4",
+    "react-native-paper": "^5.14.5",
+    "react-native-safe-area-context": "~5.6.0",
+    "react-native-screens": "~4.16.0",
+    "uuid": "^13.0.0",
+    "zustand": "^5.0.8"
+  },
+  "devDependencies": {
+    "@types/jest": "^30.0.0",
+    "@types/react": "~19.1.0",
+    "@types/uuid": "^10.0.0",
+    "typescript": "~5.9.2"
+  },
+  "private": true
+}
