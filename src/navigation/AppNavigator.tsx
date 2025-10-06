@@ -4,6 +4,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import HomeScreen from '../screens/HomeScreen';
 import StatsScreen from '../screens/StatsScreen';
 import ConfigScreen from '../screens/ConfigScreen';
+import { DatabaseViewerScreen } from '../screens/DatabaseViewerScreen';
 import { useAppStore } from '../store/appStore';
 import { classificationService } from '../services/classificationService';
 import { telegramService } from '../services/telegramService';
@@ -13,6 +14,7 @@ export type RootStackParamList = {
   Home: undefined;
   Stats: undefined;
   Config: undefined;
+  DatabaseViewer: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -85,6 +87,11 @@ export default function AppNavigator() {
           name="Config"
           component={ConfigScreen}
           options={{ title: 'Configuration' }}
+        />
+        <Stack.Screen
+          name="DatabaseViewer"
+          component={DatabaseViewerScreen}
+          options={{ headerShown: false }}
         />
       </Stack.Navigator>
     </NavigationContainer>

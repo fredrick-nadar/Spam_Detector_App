@@ -178,6 +178,15 @@ class SmsMonitoringService {
               result.reason
             );
 
+            // Send Telegram notification if spam
+            if (result.isSpam) {
+              console.log(`Spam detected in inbox: ${message.sender}`);
+              message.isSpam = result.isSpam;
+              message.confidence = result.confidence;
+              message.reason = result.reason;
+              await telegramService.sendSpamNotification(message);
+            }
+
             processedCount++;
 
             // Notify callback

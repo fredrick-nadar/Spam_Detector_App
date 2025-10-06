@@ -2,6 +2,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import { ClassificationResult, SPAM_KEYWORDS } from '../types';
 import { preprocessText, calculateKeywordSpamScore, truncateText } from '../utils/textPreprocessing';
 import { sleep } from '../utils/helpers';
+import { nlpClassifierService } from './nlpClassifierService';
 
 class ClassificationService {
   private genAI: GoogleGenerativeAI | null = null;
@@ -28,21 +29,65 @@ class ClassificationService {
   }
 
   /**
-   * Classifies SMS message using Gemini AI
+   * Classifies SMS message using NLP first, then optionally Gemini AI for validation
    * Falls back to keyword-based detection on error
    */
   async classifyMessage(text: string): Promise<ClassificationResult> {
-    // Try AI classification first
+    // STEP 1: Use NLP classifier (fast, accurate, no API calls)
+    const nlpResult = nlpClassifierService.classifyMessage(text);
+    
+    // If NLP has high confidence, use it directly
+    if (nlpResult.confidence > 0.7) {
+      console.log(`NLP classification: ${nlpResult.isSpam ? 'SPAM' : 'HAM'} (${nlpResult.confidence} confidence)`);
+      return {
+        isSpam: nlpResult.isSpam,
+        confidence: nlpResult.confidence,
+        reason: `${nlpResult.reason} (NLP)`,
+      };
+    }
+
+    // STEP 2: For ambiguous cases, use Gemini AI for second opinion
     if (this.isInitialized()) {
       try {
-        return await this.classifyWithAI(text);
+        const aiResult = await this.classifyWithAI(text);
+        console.log(`AI classification: ${aiResult.isSpam ? 'SPAM' : 'HAM'} (${aiResult.confidence} confidence)`);
+        
+        // Combine NLP and AI results with weighted average
+        const combinedConfidence = (nlpResult.confidence * 0.4) + (aiResult.confidence * 0.6);
+        
+        // If both agree, use combined result
+        if (nlpResult.isSpam === aiResult.isSpam) {
+          return {
+            isSpam: aiResult.isSpam,
+            confidence: combinedConfidence,
+            reason: `${aiResult.reason} (NLP + AI agreement)`,
+          };
+        }
+        
+        // If they disagree, trust the one with higher confidence
+        const finalResult = nlpResult.confidence > aiResult.confidence ? nlpResult : aiResult;
+        return {
+          isSpam: finalResult.isSpam,
+          confidence: finalResult.confidence,
+          reason: `${finalResult.reason} (${finalResult === nlpResult ? 'NLP' : 'AI'} override)`,
+        };
       } catch (error) {
-        console.warn('AI classification failed, falling back to keyword detection:', error);
+        console.warn('AI classification failed, using NLP result:', error);
+        return {
+          isSpam: nlpResult.isSpam,
+          confidence: nlpResult.confidence,
+          reason: `${nlpResult.reason} (AI unavailable)`,
+        };
       }
     }
 
-    // Fallback to keyword-based detection
-    return this.classifyWithKeywords(text);
+    // STEP 3: No AI available, use NLP result
+    console.log(`NLP-only classification: ${nlpResult.isSpam ? 'SPAM' : 'HAM'}`);
+    return {
+      isSpam: nlpResult.isSpam,
+      confidence: nlpResult.confidence,
+      reason: `${nlpResult.reason} (NLP)`,
+    };
   }
 
   /**

@@ -204,6 +204,65 @@ export default function HomeScreen({ navigation }: Props) {
     );
   };
 
+  const handleReclassifyAll = async () => {
+    Alert.alert(
+      'Reclassify All Messages',
+      'This will reclassify all existing messages using the new advanced NLP system. Continue?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Reclassify',
+          onPress: async () => {
+            try {
+              setLoadingMessages(true);
+              const allMessages = await databaseService.getAllMessages();
+              
+              let updated = 0;
+              let spamFound = 0;
+              
+              for (const message of allMessages) {
+                const result = await classificationService.classifyMessage(message.body);
+                await databaseService.updateClassification(
+                  message.id,
+                  result.isSpam,
+                  result.confidence,
+                  result.reason
+                );
+                
+                // Send Telegram notification if spam detected
+                if (result.isSpam) {
+                  spamFound++;
+                  const updatedMessage: SMSMessage = {
+                    ...message,
+                    isSpam: result.isSpam,
+                    confidence: result.confidence,
+                    reason: result.reason,
+                    classifiedAt: Date.now(),
+                  };
+                  await telegramService.sendSpamNotification(updatedMessage);
+                }
+                
+                updated++;
+              }
+              
+              await loadMessages();
+              await loadStats();
+              Alert.alert(
+                'Success',
+                `Reclassified ${updated} messages with NLP system.\n${spamFound} spam messages sent to Telegram.`
+              );
+            } catch (error) {
+              console.error('Failed to reclassify:', error);
+              Alert.alert('Error', 'Failed to reclassify messages.');
+            } finally {
+              setLoadingMessages(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const renderMessageItem = ({ item }: { item: SMSMessage }) => (
     <Card style={styles.messageCard}>
       <Card.Content>
@@ -306,6 +365,16 @@ export default function HomeScreen({ navigation }: Props) {
             open={fabOpen}
             icon={fabOpen ? 'close' : 'menu'}
             actions={[
+              {
+                icon: 'refresh',
+                label: 'Reclassify All',
+                onPress: handleReclassifyAll,
+              },
+              {
+                icon: 'database',
+                label: 'View Database',
+                onPress: () => navigation.navigate('DatabaseViewer' as never),
+              },
               {
                 icon: 'cog',
                 label: 'Settings',
