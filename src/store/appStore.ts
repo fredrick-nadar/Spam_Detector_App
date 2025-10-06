@@ -2,6 +2,11 @@ import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SMSMessage, MessageStats, AppConfig, PermissionState } from '../types';
 
+// Load environment variables (Expo uses EXPO_PUBLIC_ prefix)
+const ENV_GEMINI_API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY || '';
+const ENV_TELEGRAM_BOT_TOKEN = process.env.EXPO_PUBLIC_TELEGRAM_BOT_TOKEN || '';
+const ENV_TELEGRAM_CHAT_ID = process.env.EXPO_PUBLIC_TELEGRAM_CHAT_ID || '';
+
 interface AppState {
   // Messages
   messages: SMSMessage[];
@@ -34,9 +39,9 @@ interface AppState {
 }
 
 const DEFAULT_CONFIG: AppConfig = {
-  geminiApiKey: '',
-  telegramBotToken: '',
-  telegramChatId: '',
+  geminiApiKey: ENV_GEMINI_API_KEY,
+  telegramBotToken: ENV_TELEGRAM_BOT_TOKEN,
+  telegramChatId: ENV_TELEGRAM_CHAT_ID,
   notificationsEnabled: true,
   monitoringEnabled: false,
   batchSize: 10,
