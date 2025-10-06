@@ -1,77 +1,47 @@
 import 'dart:async';
-import 'dart:math';
+import 'dart:io' show Platform;
 import 'package:permission_handler/permission_handler.dart';
 import 'package:logger/logger.dart';
 import 'package:uuid/uuid.dart';
+import 'package:sms_advanced/sms_advanced.dart';
 
-import '../models/sms_message.dart';
+import '../models/sms_message.dart' as models;
 
+/// Service for monitoring and reading SMS messages on Android
 class SmsMonitoringService {
-  static final SmsMonitoringService _instance =
-      SmsMonitoringService._internal();
+  static final SmsMonitoringService _instance = SmsMonitoringService._internal();
   factory SmsMonitoringService() => _instance;
   SmsMonitoringService._internal();
 
   final Logger _logger = Logger();
   final Uuid _uuid = const Uuid();
-
-  // Stream controllers for real-time SMS monitoring
-  final StreamController<SmsMessage> _smsStreamController =
-      StreamController<SmsMessage>.broadcast();
-
-  Stream<SmsMessage> get smsStream => _smsStreamController.stream;
-
+  final SmsQuery _smsQuery = SmsQuery();
+  final SmsReceiver _smsReceiver = SmsReceiver();
+  final StreamController<models.SmsMessage> _smsStreamController = 
+      StreamController<models.SmsMessage>.broadcast();
+  
+  Stream<models.SmsMessage> get smsStream => _smsStreamController.stream;
   bool _isMonitoring = false;
   bool get isMonitoring => _isMonitoring;
+  bool _isAndroid = false;
+  StreamSubscription<SmsMessage>? _smsSubscription;
 
-  // Mock data for demonstration
-  Timer? _mockTimer;
-  final Random _random = Random();
-
-  // Sample SMS messages for demonstration
-  final List<Map<String, dynamic>> _sampleMessages = [
-    {
-      'sender': '+1234567890',
-      'body': r'Congratulations! You have won $1000. Click here to claim: http://fake-link.com',
-      'isSpam': true
-    },
-    {
-      'sender': 'AMAZON',
-      'body': 'Your package will be delivered today between 2-4 PM',
-      'isSpam': false
-    },
-    {
-      'sender': '+9876543210',
-      'body': 'URGENT: Your account will be suspended. Verify now at fake-bank.com',
-      'isSpam': true
-    },
-    {
-      'sender': 'Mom',
-      'body': 'Don\'t forget to pick up groceries on your way home',
-      'isSpam': false
-    },
-    {
-      'sender': 'PROMO123',
-      'body': 'LIMITED TIME: Get 90% off! Act now before it\'s too late!',
-      'isSpam': true
-    },
-    {
-      'sender': 'BANK',
-      'body': r'Your account balance is $1,234.56 as of today',
-      'isSpam': false
-    },
-  ];
-
-  /// Initialize SMS monitoring service
+  /// Initialize the SMS monitoring service
   Future<bool> initialize() async {
     try {
       _logger.i('Initializing SMS monitoring service...');
+      
+      // Check if platform is Android
+      _isAndroid = Platform.isAndroid;
+      if (!_isAndroid) {
+        _logger.w('SMS monitoring only supported on Android platform');
+        return false;
+      }
 
-      // Check permissions (for real implementation)
+      // Check permissions
       bool hasPermissions = await _checkPermissions();
       if (!hasPermissions) {
-        _logger.w('SMS permissions not granted');
-        // For demo, we'll continue anyway
+        _logger.w('SMS permissions not granted, will request at runtime');
       }
 
       _logger.i('SMS monitoring service initialized successfully');
@@ -82,47 +52,69 @@ class SmsMonitoringService {
     }
   }
 
-  /// Check and request necessary permissions
+  /// Check if SMS and Phone permissions are granted
   Future<bool> _checkPermissions() async {
     try {
-      // Check SMS permission
-      PermissionStatus smsStatus = await Permission.sms.status;
-      if (smsStatus != PermissionStatus.granted) {
-        smsStatus = await Permission.sms.request();
-      }
-
-      // Check phone permission
-      PermissionStatus phoneStatus = await Permission.phone.status;
-      if (phoneStatus != PermissionStatus.granted) {
-        phoneStatus = await Permission.phone.request();
-      }
-
-      bool allGranted = smsStatus == PermissionStatus.granted &&
-                       phoneStatus == PermissionStatus.granted;
-
-      _logger.i('SMS permission: $smsStatus, Phone permission: $phoneStatus');
-      return allGranted;
+      final smsStatus = await Permission.sms.status;
+      final phoneStatus = await Permission.phone.status;
+      
+      _logger.i('SMS permission: ${smsStatus.isGranted}');
+      _logger.i('Phone permission: ${phoneStatus.isGranted}');
+      
+      return smsStatus.isGranted && phoneStatus.isGranted;
     } catch (e) {
       _logger.e('Error checking permissions: $e');
       return false;
     }
   }
 
-  /// Start monitoring for incoming SMS messages
+  /// Request SMS and Phone permissions from user
+  Future<bool> requestPermissions() async {
+    try {
+      _logger.i('Requesting SMS and Phone permissions...');
+      
+      Map<Permission, PermissionStatus> statuses = await [
+        Permission.sms,
+        Permission.phone,
+      ].request();
+      
+      final allGranted = statuses.values.every((status) => status.isGranted);
+      _logger.i('Permissions granted: $allGranted');
+      
+      return allGranted;
+    } catch (e) {
+      _logger.e('Error requesting permissions: $e');
+      return false;
+    }
+  }
+
+  /// Start monitoring incoming SMS messages
   Future<bool> startMonitoring() async {
     try {
+      if (!_isAndroid) {
+        _logger.e('SMS monitoring only supported on Android');
+        return false;
+      }
+
       if (_isMonitoring) {
-        _logger.w('SMS monitoring is already active');
+        _logger.w('SMS monitoring already active');
         return true;
       }
 
       _logger.i('Starting SMS monitoring...');
-      
-      // For demonstration, we'll simulate incoming SMS messages
-      _startMockMessageGeneration();
-      
+
+      // Listen to incoming SMS using SmsReceiver
+      _smsSubscription = _smsReceiver.onSmsReceived!.listen(
+        (SmsMessage message) {
+          _onNewSmsReceived(message);
+        },
+        onError: (error) {
+          _logger.e('SMS receiver error: $error');
+        },
+      );
+
       _isMonitoring = true;
-      _logger.i('SMS monitoring started successfully');
+      _logger.i('SMS monitoring started - listening for incoming SMS');
       return true;
     } catch (e) {
       _logger.e('Failed to start SMS monitoring: $e');
@@ -130,7 +122,7 @@ class SmsMonitoringService {
     }
   }
 
-  /// Stop monitoring SMS messages
+  /// Stop monitoring incoming SMS messages
   Future<void> stopMonitoring() async {
     try {
       if (!_isMonitoring) {
@@ -140,8 +132,9 @@ class SmsMonitoringService {
 
       _logger.i('Stopping SMS monitoring...');
       
-      _mockTimer?.cancel();
-      _mockTimer = null;
+      // Cancel the subscription
+      await _smsSubscription?.cancel();
+      _smsSubscription = null;
       
       _isMonitoring = false;
       _logger.i('SMS monitoring stopped successfully');
@@ -150,68 +143,58 @@ class SmsMonitoringService {
     }
   }
 
-  /// Start generating mock SMS messages for demonstration
-  void _startMockMessageGeneration() {
-    // Generate a new message every 30-60 seconds for demo
-    _mockTimer = Timer.periodic(const Duration(seconds: 45), (timer) {
-      _generateMockMessage();
-    });
-
-    // Generate first message after 5 seconds
-    Timer(const Duration(seconds: 5), () {
-      _generateMockMessage();
-    });
-  }
-
-  /// Generate a mock SMS message
-  void _generateMockMessage() {
+  /// Handle new SMS received
+  void _onNewSmsReceived(SmsMessage message) {
     try {
-      final sample = _sampleMessages[_random.nextInt(_sampleMessages.length)];
+      _logger.i('New SMS received from ${message.address}');
       
-      final smsMessage = SmsMessage(
-        id: _uuid.v4(),
-        sender: sample['sender'] as String,
-        body: sample['body'] as String,
-        timestamp: DateTime.now(),
-      );
-
-      _logger.i('Generated mock SMS from ${smsMessage.sender}');
+      // Convert to app's SMS message format
+      final smsMessage = _convertToAppSmsMessage(message);
+      
+      // Add to stream for processing
       _smsStreamController.add(smsMessage);
     } catch (e) {
-      _logger.e('Error generating mock message: $e');
+      _logger.e('Error processing new SMS: $e');
     }
   }
 
-  /// Get recent SMS messages (mock implementation)
-  Future<List<SmsMessage>> getRecentMessages({int limit = 50}) async {
+  /// Convert SmsMessage from plugin to app's SmsMessage model
+  models.SmsMessage _convertToAppSmsMessage(SmsMessage message) {
+    return models.SmsMessage(
+      id: _uuid.v4(),
+      sender: message.address ?? 'Unknown',
+      body: message.body ?? '',
+      timestamp: message.date ?? DateTime.now(),
+    );
+  }
+
+  /// Get recent SMS messages from inbox
+  Future<List<models.SmsMessage>> getRecentMessages({int limit = 50}) async {
     try {
-      _logger.i('Fetching recent SMS messages (mock)...');
-      
-      final List<SmsMessage> messages = [];
-      final now = DateTime.now();
-      
-      // Generate some historical messages
-      for (int i = 0; i < limit && i < _sampleMessages.length * 3; i++) {
-        final sample = _sampleMessages[i % _sampleMessages.length];
-        final messageTime = now.subtract(Duration(
-          hours: _random.nextInt(24 * 7), // Last week
-          minutes: _random.nextInt(60),
-        ));
-        
-        final smsMessage = SmsMessage(
-          id: _uuid.v4(),
-          sender: sample['sender'] as String,
-          body: sample['body'] as String,
-          timestamp: messageTime,
-        );
-        
-        messages.add(smsMessage);
+      if (!_isAndroid) {
+        _logger.w('SMS reading only supported on Android');
+        return [];
       }
-      
-      // Sort by timestamp (newest first)
-      messages.sort((a, b) => b.timestamp.compareTo(a.timestamp));
-      
-      _logger.i('Fetched ${messages.length} mock SMS messages');
+
+      _logger.i('Fetching recent SMS messages from inbox...');
+
+      // Query inbox messages using SmsQuery
+      final List<SmsMessage> inboxMessages = await _smsQuery.querySms(
+        kinds: [SmsQueryKind.Inbox],
+        count: limit,
+      );
+
+      if (inboxMessages.isEmpty) {
+        _logger.i('No SMS messages found in inbox');
+        return [];
+      }
+
+      // Convert to app's SMS message format
+      final List<models.SmsMessage> messages = inboxMessages
+          .map((msg) => _convertToAppSmsMessage(msg))
+          .toList();
+
+      _logger.i('Fetched ${messages.length} SMS messages from inbox');
       return messages;
     } catch (e) {
       _logger.e('Error fetching recent messages: $e');
@@ -219,17 +202,61 @@ class SmsMonitoringService {
     }
   }
 
-  /// Search SMS messages by query (mock implementation)
-  Future<List<SmsMessage>> searchMessages(String query) async {
+  /// Get all SMS messages from inbox
+  Future<List<models.SmsMessage>> getAllInboxMessages() async {
     try {
+      if (!_isAndroid) {
+        _logger.w('SMS reading only supported on Android');
+        return [];
+      }
+
+      _logger.i('Fetching all SMS messages from inbox...');
+
+      // Query all inbox messages
+      final List<SmsMessage> inboxMessages = await _smsQuery.querySms(
+        kinds: [SmsQueryKind.Inbox],
+      );
+
+      if (inboxMessages.isEmpty) {
+        _logger.i('No SMS messages found');
+        return [];
+      }
+
+      // Sort by date (newest first)
+      final sortedMessages = inboxMessages.toList();
+      sortedMessages.sort((a, b) {
+        final dateA = a.date ?? DateTime.fromMillisecondsSinceEpoch(0);
+        final dateB = b.date ?? DateTime.fromMillisecondsSinceEpoch(0);
+        return dateB.compareTo(dateA);
+      });
+
+      // Convert to app's SMS message format
+      final List<models.SmsMessage> messages = sortedMessages
+          .map((msg) => _convertToAppSmsMessage(msg))
+          .toList();
+
+      _logger.i('Fetched ${messages.length} total SMS messages');
+      return messages;
+    } catch (e) {
+      _logger.e('Error fetching all inbox messages: $e');
+      return [];
+    }
+  }
+
+  /// Search messages by query string
+  Future<List<models.SmsMessage>> searchMessages(String query) async {
+    try {
+      if (!_isAndroid) return [];
+
       _logger.i('Searching SMS messages for: $query');
-      
-      final allMessages = await getRecentMessages(limit: 100);
+
+      // Get recent messages and filter locally
+      final allMessages = await getRecentMessages(limit: 500);
       final filteredMessages = allMessages.where((message) {
         return message.body.toLowerCase().contains(query.toLowerCase()) ||
-               message.sender.toLowerCase().contains(query.toLowerCase());
+            message.sender.toLowerCase().contains(query.toLowerCase());
       }).toList();
-      
+
       _logger.i('Found ${filteredMessages.length} messages matching query');
       return filteredMessages;
     } catch (e) {
@@ -238,19 +265,23 @@ class SmsMonitoringService {
     }
   }
 
-  /// Get message count by type (mock implementation)
+  /// Get message statistics
   Future<Map<String, int>> getMessageStats() async {
     try {
-      final messages = await getRecentMessages(limit: 100);
-      
+      if (!_isAndroid) {
+        return {'total': 0, 'unread': 0, 'today': 0};
+      }
+
+      final messages = await getRecentMessages(limit: 500);
+      final now = DateTime.now();
+
       return {
         'total': messages.length,
         'unread': messages.where((m) => !m.isClassified).length,
         'today': messages.where((m) {
-          final now = DateTime.now();
           return m.timestamp.day == now.day &&
-                 m.timestamp.month == now.month &&
-                 m.timestamp.year == now.year;
+              m.timestamp.month == now.month &&
+              m.timestamp.year == now.year;
         }).length,
       };
     } catch (e) {
@@ -261,7 +292,7 @@ class SmsMonitoringService {
 
   /// Dispose resources
   void dispose() {
-    _mockTimer?.cancel();
+    _smsSubscription?.cancel();
     _smsStreamController.close();
   }
 }

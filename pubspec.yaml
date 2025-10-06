@@ -46,6 +46,12 @@ dependencies:
   uuid: ^4.5.1
   intl: ^0.20.2
   crypto: ^3.0.6
+  
+  # SMS monitoring for Android
+  sms_advanced: ^1.1.0
+  
+  # Google Gemini AI for keyword extraction
+  google_generative_ai: ^0.4.6
 
 dev_dependencies:
   flutter_test:
