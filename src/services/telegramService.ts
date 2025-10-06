@@ -84,16 +84,24 @@ class TelegramService {
   }
 
   /**
+   * Escape Markdown special characters for Telegram
+   */
+  private escapeMarkdown(text: string): string {
+    // Escape special characters: _ * [ ] ( ) ~ ` > # + - = | { } . !
+    return text.replace(/([_*\[\]()~`>#+=|{}.!\\-])/g, '\\$1');
+  }
+
+  /**
    * Format spam message for Telegram
    */
   private formatSpamMessage(message: SMSMessage): string {
-    const sender = message.sender || 'Unknown';
-    const timestamp = formatTimestamp(message.timestamp);
+    const sender = this.escapeMarkdown(message.sender || 'Unknown');
+    const timestamp = this.escapeMarkdown(formatTimestamp(message.timestamp));
     const confidence = message.confidence
       ? `${Math.round(message.confidence * 100)}%`
       : 'N/A';
-    const body = truncateText(message.body, 200);
-    const reason = message.reason ? truncateText(message.reason, 100) : 'N/A';
+    const body = this.escapeMarkdown(truncateText(message.body, 200));
+    const reason = message.reason ? this.escapeMarkdown(truncateText(message.reason, 100)) : 'N/A';
 
     return `🚨 *Spam Detected*
 
@@ -107,7 +115,7 @@ ${body}
 *Reason:*
 ${reason}
 
----
+\\-\\-\\-
 SMS Spam Detector RN`;
   }
 
